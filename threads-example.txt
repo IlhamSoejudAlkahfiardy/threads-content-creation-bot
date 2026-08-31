@@ -1,0 +1,192 @@
+--- Contoh Thread 1 ---
+First Threads
+Thread #1
+Kemaren sempat nemu threads yang ngebahas tentang Antigravity yang kelewatan sampe ngehapus file di codebasenya.
+I think ini pembahasan yang cukup menarik, karena ini menyinggung soal pentingnya fundamental sebelum kita menyentuh teknologi lain untuk meningkatkan produktivitas  
+
+Thread #2
+Case si pembuat seperti ini,
+Doi perintahin AI buat nambahin fitur di projectnya, bukannya menyelesaikan tugasnya untuk menambahkan fitur, AI nya malah menghapus file bahkan entah bagaimana skenarionya, direktori D juga ikut terhapus.
+Sampai sini pasti kalian tau kesalahan "si user" sampai sampai ngebuat AI Agentnya se beringas itu.
+1. Konfigurasi dasar AI Agent di setiap IDE
+2. Pengetahuan dasar tentang shell command
+3. Penggunaan git, yang udah jadi hal basic semua programmer 
+
+Thread #3
+Konfigurasi dasar AI Agent
+Di semua IDE, pasti ada konfigurasi untuk mengatur sejauh mana permission yang dimiliki oleh AI Agent.
+Di bawah ini contohnya kalau kalian pakai Antigravity, saya selalu mengatur Terminal Command Auto Execution nya ke mode Reqeust Review.
+Fungsinya apa? Agar setiap kali AI Agent ingin menjalankan apapun yang membutuhkan shell command / terminal command, akan meminta approval dari Coder terlebih dahulu, yaitu Yes for this time, Yes and always allow, dan No.
+
+Thread #4
+Ini adalah prinsip yang harus dipegang oleh seluruh programmer dan vibe coder, yaitu memposisikan kita harus tetap diatas AI Agent, jangan sampai mereka do something diluar ekspektasi kita atau bahkan we don't even know what they've done
+
+Thread #5
+Pengetahuan dasar tentang shell command
+Setiap kali AI Agent ingin menjalankan shell command dan meminta approval dari coder, akan selalu ada preview script apa yang akan dijalankan.
+Contoh shell command yang berisiko tinggi:
+1. rm -rf
+2. git reset --hard
+3. npm audit fix --force
+dll
+Kita sebagai coder harus selalu membaca preview script yang akan dijalankan oleh Agent, dari sini kita dapat menilai apakah script tersebut berbahaya atau masih relevan dengan perintah kita
+
+Thread #6
+Pakai Git
+Git udah jadi standar minimal buat kalian pasang ketika mau ngerjakan apapun. Bahkan Saas over engineering dengan 0 user dan Rp 0 revenue buatan kalian itu pun pasti git commitnya bikin github/lab kalian produktif 🙈
+Git juga bisa mem-prevent hal hal yang tidak kita inginkan, karena jika ada kesalahan pengerjaan dari Agent yang halu, kita bisa memilih antara stage atau revert dengan membandingkan kode sebelum dan sesudah adanya perubahan 
+
+Thread #7
+So, pesanku si junior programmer ini buat para coder yang selingkuh dari Stack Overflow ke AI Agent, jangan sampai kuasa kalian dirampas oleh AI Agent, jangan kasih seluruh akses kalian ke AI Agent.
+Tetap posisikan coder diatas Agent dan aktifkan approval biar case kayak diatas ga terjadi lagi.
+Dan, jangan salahkan AI atas apapun yang terjadi, muhasabahlah diri Anda terlebih dahulu, karena AI hanyalah alat multiplier, bukan pengganti pada coder.
+Menurut kalian gimana? Open discuss kuyy!😉
+---
+
+--- Contoh Thread 2 ---
+Second Threads
+Thread #1
+Kalian pernah gaa baca sebuah function, terus mikir:
+“Ini function sebenarnya cuma melakukan hal sederhana… tapi kenapa cara nulisnya serumit ini? 😭”
+Logic nya sebenarnya ngga terlalu sulit, tapi pas ngeliat nested if, else, loop, dan berbagai kondisi di dalamnya, kita jadi harus mikir berkali kali buat memahami apa yang sebenarnya dilakukan oleh function tersebut.
+Nah, ternyata ada istilah khusus untuk hal seperti ini.
+Namanya Cognitive Complexity
+
+Thread #2
+Cognitive Complexity adalah ukuran seberapa sulit sebuah kode untuk dipahami manusia.
+Jadi, fokusnya bukan cuma apakah kode ini bisa dijalankan, tapi juga seberapa besar effort yang dibutuhkan developer untuk memahami logic di dalamnya.
+Makin banyak nested condition, loop, dan struktur logic yang membuat kita terus berpikir ulang, makin tinggi juga cognitive complexity nya.
+Dan ini penting, karena kode yang sulit dipahami akan lebih sulit di maintain maupun dikembangkan oleh developer lain.
+
+Thread #3
+Coba amati kode di bawah ini.
+Aku kasih contoh 2 block kode dengan cognitive complexity yang berbeda.
+Padahal, tujuan kedua function tersebut sama, tapi function kedua membutuhkan effort lebih besar untuk dipahami, karena kita harus terus mengikuti nested condition dan berbagai kemungkinan jalur logic.
+Itulah salah satu gambaran sederhana dari cognitive complexity.
+Jadi bukan sekedar jumlah baris kode, tapi seberapa sulit otak kita mengikuti alur logic-nya.
+
+Thread #4
+Tapi sebagai developer, kita nggak harus menganalisis semua kode secara manual buat nyari bagian yang terlalu kompleks.
+Udah ada tools yang bisa nanganin hal itu, salah satunya SonarQube.
+
+Thread #5
+SonarQube adalah platform code quality analysis yang bisa menganalisis codebase dan menemukan berbagai issue, termasuk code smell dan Cognitive Complexity.
+Jadi kita bisa tahu function mana yang terlalu kompleks atau bagian mana yang perlu di refactor
+Dengan begitu, kita nggak cuma memastikan kode kita works, tapi juga tetap readable dan maintainable. 
+
+Thread #6
+So, buat kalian para programmer, Kalian lebih mementingkan yang penting kodenya jadi dan jalan atau kodenya jalan, tapi juga harus mudah dibaca dan di-maintain?
+Karena pada akhirnya, kode yang kita tulis bukan cuma akan dibaca oleh komputer.
+Kode juga akan dibaca oleh manusia.
+Dan bisa jadi, beberapa bulan kemudian manusia itu adalah kita sendiri.💀
+Menurut kalian gimana?
+Lebih penting cepat selesai atau readability & maintainability juga harus diprioritaskan?
+---
+
+--- Contoh Threads 3 ---
+Third Threads 
+Thread #1
+Case-1
+PM: "Buat ningkatin security, tolong kamu buatkan fitur autentikasi ya"
+Dev: "OK siap om, saya buatkan role superadmin, admin, user, dan guest ya"
+PM: "LOH?!!"
+Case-2
+PM: "Saya mau fitur A cuma bisa diakses oleh orang orang tertentu, implementasikan authorization ya"
+Dev: "OK siap bang, saya tambahin fitur Login dan Register"
+PM: "Angkat kaki sekarang, gw pecat lo!"
+Kalian pernah ga sih ngalamin hal kaya diatas? Udah jadi developer tapi masih bingung soal Authentication vs Authorization
+
+Thread #2
+Disini gw coba jelasin pake bahasa bayi "Apa itu mereka berdua" dan "Apa perbedaannya"
+Authentication = “Who are you?” → sebuah proses untuk memverifikasi identitas pengguna.
+Authorization = “What are you allowed to do?” → sebuah proses untuk menentukan hak/akses pengguna setelah terautentikasi.
+Singkatnya: Authentication identifies you;
+Authorization decides your permissions.
+Masih bingung? Ini penjelasan singkatnya
+
+Thread #3
+Authentication adalah proses untuk memastikan identitas seseorang sebelum dia boleh masuk ke dalam suatu sistem. Sederhananya, sistem ingin memastikan bahwa “kamu benar benar orang yang kamu bilang sebagai dirimu”
+Misalnya, seseorang mengatakan dirinya Budi. Sistem akan checking informasi yang diberikan untuk memastikan identitas tersebut benar. Jadi, authentication berhubungan dengan identitas, bukan dengan apa yang boleh dilakukan seseorang.
+Authentication menjawab pertanyaan: “Kamu siapa?”
+
+Thread #4
+Contoh implementasi authentication yang paling sederhana adalah login menggunakan email dan password.
+User
+↓
+Masukkan email + password
+↓
+Frontend mengirim data ke server
+↓
+Server mencari user berdasarkan email
+↓
+Server memverifikasi password
+↓
+Password benar?
+├── Ya → User dianggap terautentikasi
+└── Tidak → Login ditolak 
+
+Thread #5
+Dalam aplikasi web modern, setelah berhasil login, server biasanya memberikan session atau token (misalnya JWT). Token/session tersebut dapat digunakan untuk mengenali user pada request berikutnya.
+Contoh sederhana dengan JWT:
+Method: POST
+Endpoint: /login
+{
+"email": "ilham@example.com",
+"password": "password123"
+}
+Server memverifikasi kredensial tersebut, lalu mengembalikan:
+{
+"token": "eyJhbGciOiJIUzI1NiIs..."
+} 
+
+Thread #6
+Authorization adalah proses untuk menentukan apa saja yang boleh dilakukan oleh seseorang setelah identitasnya sudah diketahui. Sederhananya, sistem sudah tahu “kamu siapa”, lalu sistem menentukan “apa yang boleh kamu lakukan”.
+Jadi, authorization bukan tentang membuktikan identitas / login / register, tetapi tentang hak akses atau permission yang dimiliki seseorang.
+Kalau dibuat sangat sederhana: authorization itu proses untuk menjawab pertanyaan “Kamu boleh ngapain aja disini” 
+
+Thread #7
+Misalnya sebuah aplikasi memiliki dua jenis user:
+Admin → boleh melihat, menambah, mengubah, dan menghapus user.
+User → hanya boleh melihat data.
+Ketika user mencoba menghapus data:
+User
+↓
+"Siapa kamu?"
+↓
+Authentication
+↓
+"User ID 123, role: user"
+↓
+Authorization
+↓
+"User boleh menghapus data?"
+↓
+No ❌
+↓
+403 Forbidden
+Sedangkan jika yang melakukan adalah admin:
+Admin
+↓
+Authentication
+↓
+"Admin ID 1, role: admin"
+↓
+Authorization
+↓
+"Admin boleh menghapus data?"
+↓
+Ya ✅
+↓
+Data dihapus
+
+Thread #8
+Dalam kode backend, konsepnya bisa terlihat seperti: 
+{image attached}
+
+Thread #9
+So, gampangnya:
+🔐 Authentication: “Kamu siapa?”
+🛂 Authorization: “Kamu boleh ngapain?”
+Jadi, sekarang kalian jangan sampe salah lagii yaww. Jadilah developer yang cerdas dan tahu segala hal, agar pekerjaanmu tidak digantikan oleh AI🤪
+Reply di bawah yukk, kita open discuss👇
+---
