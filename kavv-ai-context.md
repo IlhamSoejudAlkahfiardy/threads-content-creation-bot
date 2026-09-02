@@ -14,17 +14,21 @@
 
 ## ⚙️ The Current Workflow
 1. **Trigger:** User sends a text message (content brief) to the Telegram Bot.
-2. **Generation:** The Express server receives the webhook, queries the `gemini-2.5-flash` model, and generates a post draft.
-3. **State Management:** The draft is saved to Firestore with a `pending` status.
-4. **Approval Loop:** The bot replies in Telegram with the drafted text and an Inline Keyboard button (**[ ✅ Approve & Upload ]**) bound to the Firestore Document ID.
-5. **Publishing Phase 1:** Upon approval, the server fetches the approved text from Firestore and sends a `POST` request to create a Threads Media Container.
-6. **Publishing Phase 2:** The server immediately sends a second `POST` request using the returned `creation_id` to publish the post.
-7. **Resolution:** Firestore is updated to `published` with the live post ID, and a success message is sent back to Telegram.
+2. **Generation:** The Express server receives the webhook, invokes `gemini-2.5-flash` with structured JSON schema (`responseSchema`), and generates an interconnected multi-thread (3 to 10 parts, each $\le$ 500 characters) in an authentic Indonesian tech developer persona.
+3. **State Management:** The multi-thread draft is stored in Firestore (`drafts` collection) with `topic`, `totalThreads`, and structured `threads` array with `status: "pending"`.
+4. **Approval Loop:** Telegram sends a consolidated preview with part numbers `[1/N]`, character counts, and an inline keyboard button (**[ ✅ Approve & Upload to Threads ]**).
+5. **Publishing Loop:**
+   - Post #1 is published as the Root Post.
+   - Subsequent parts are published sequentially using `reply_to_id` set to the previous post ID, creating a connected threadstorm.
+   - Includes container status polling (`waitForContainerFinished`) and exponential backoff retry (`publishContainerWithRetry`) against transient Meta propagation latency (error `4279009`).
+6. **Resolution:** Firestore status updates to `published` with `rootPostId` and all individual live post IDs. A success confirmation is sent to Telegram.
 
 ## 🚦 Current Project State
-* **Meta Developer App:** Created and authorized. Token saved in `.env`.
-* **Firestore:** Database initialized in Native Mode.
-* **Authentication:** `gcloud auth application-default login` executed successfully, bypassing the need for JSON keys.
-* **Codebase:** `index.js` holds the webhook logic, routing, AI generation, and posting sequence.
-* **Environment Variables (`.env`):** Contains `TELEGRAM_TOKEN`, `THREADS_TOKEN`, `THREADS_USER_ID=me`, `PORT=3000`, and `GEMINI_API_KEY`.
-* **Next Steps:** Refine AI prompts, explore multimodal (image) support, and deploy the application to the GCP VPS for production.
+* **Meta Developer App:** Created, authorized, and active.
+* **Firestore:** Database running in Native Mode (`threads-bot-6d1a7`) authenticated via ADC.
+* **Multi-Thread Engine:** Fully implemented and verified (structured output, 500 char hard limit, chained publishing with polling & retry).
+* **Environment Variables (`.env`):** Contains `TELEGRAM_TOKEN`, `THREADS_TOKEN`, `THREADS_USER_ID=me`, `FIREBASE_PROJECT_ID`, `GEMINI_API_KEY`, and `PORT=3000`.
+* **Dev Server:** Running with `npm run dev` (`node --watch-path=index.js --watch-path=.env index.js`).
+* **Next Steps:**
+  - Multimodal support (generating or attaching code snippet images / cards).
+  - Deploy to a GCP VPS / Cloud Run for 24/7 production uptime.
