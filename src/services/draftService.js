@@ -1,0 +1,97 @@
+const { admin, db } = require("../config/firebase");
+
+const DRAFTS_COLLECTION = "drafts";
+
+/**
+ * Save a newly generated affiliate draft to Firestore
+ * @param {object} params
+ * @param {string} params.productName
+ * @param {string} params.category
+ * @param {string[]} params.imageUrls
+ * @param {Array} params.threads
+ * @returns {Promise<string>} Created draft ID
+ */
+async function createDraft({ productName, category, imageUrls, threads }) {
+  const draftData = {
+    productName,
+    category,
+    imageUrls,
+    threads,
+    status: "pending",
+    rootPostId: "",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  };
+
+  const draftRef = await db.collection(DRAFTS_COLLECTION).add(draftData);
+  console.log(`[Firestore] Saved affiliate draft ID: ${draftRef.id}`);
+  return draftRef.id;
+}
+
+/**
+ * Fetch a draft document by ID
+ * @param {string} draftId
+ * @returns {Promise<{ id: string, ...object }>}
+ */
+async function getDraft(draftId) {
+  const docRef = db.collection(DRAFTS_COLLECTION).doc(draftId);
+  const doc = await docRef.get();
+
+  if (!doc.exists) {
+    throw new Error(`Draft document '${draftId}' not found in Firestore`);
+  }
+
+  return { id: doc.id, ...doc.data() };
+}
+
+/**
+ * Mark a draft as currently publishing
+ * @param {string} draftId
+ */
+async function markPublishing(draftId) {
+  await db.collection(DRAFTS_COLLECTION).doc(draftId).update({
+    status: "publishing",
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Mark a draft as successfully published
+ * @param {string} draftId
+ * @param {string} rootPostId
+ * @param {Array} updatedThreads
+ */
+async function markPublished(draftId, rootPostId, updatedThreads) {
+  await db.collection(DRAFTS_COLLECTION).doc(draftId).update({
+    status: "published",
+    rootPostId,
+    threads: updatedThreads,
+    publishedAt: admin.firestore.FieldValue.serverTimestamp(),
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
+/**
+ * Mark a draft as failed
+ * @param {string} draftId
+ * @param {string} errorMessage
+ */
+async function markFailed(draftId, errorMessage) {
+  try {
+    await db.collection(DRAFTS_COLLECTION).doc(draftId).update({
+      status: "failed",
+      errorMessage,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    console.error("[Firestore] Failed to update draft failure status:", e.message);
+  }
+}
+
+module.exports = {
+  createDraft,
+  getDraft,
+  markPublishing,
+  markPublished,
+  markFailed,
+};
