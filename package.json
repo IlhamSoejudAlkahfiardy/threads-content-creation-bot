@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node --watch-path=src --watch-path=index.js --watch-path=.env index.js",
     "start": "node index.js",
+    "test:prompt": "node test-prompt.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
