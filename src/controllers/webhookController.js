@@ -4,6 +4,7 @@ const draftService = require("../services/draftService");
 const threadsService = require("../services/threadsService");
 const { handleMediaGroup } = require("../utils/mediaGroupBuffer");
 const { getTopicById } = require("../config/topics");
+const logger = require("../utils/logger");
 
 /**
  * High-level orchestration: process product brief and generate affiliate threads
@@ -12,6 +13,11 @@ const { getTopicById } = require("../config/topics");
  * @param {string[]} [photoFileIds=[]]
  */
 async function processAffiliateBrief(chatId, briefText, photoFileIds = []) {
+  logger.info(
+    "AffiliateEngine",
+    `Starting brief processing for chatId: ${chatId} (text chars: ${briefText.length}, photos: ${photoFileIds.length})`
+  );
+
   // 1. Notify user that AI is processing
   await telegramService.sendMessage(
     chatId,
@@ -21,12 +27,14 @@ async function processAffiliateBrief(chatId, briefText, photoFileIds = []) {
   try {
     // 2. Resolve photo URLs from Telegram CDN
     const imageUrls = [];
-    for (const fileId of photoFileIds) {
+    for (let i = 0; i < photoFileIds.length; i++) {
+      const fileId = photoFileIds[i];
       try {
+        logger.info("TelegramCDN", `Resolving file URL ${i + 1}/${photoFileIds.length} (fileId: ${fileId.slice(0, 15)}...)`);
         const publicUrl = await telegramService.getTelegramFileUrl(fileId);
         imageUrls.push(publicUrl);
       } catch (err) {
-        console.error("[Telegram CDN] Error getting file URL:", err.message);
+        logger.error("TelegramCDN", `Error getting file URL for ${fileId}:`, err.message);
       }
     }
 
@@ -37,15 +45,20 @@ async function processAffiliateBrief(chatId, briefText, photoFileIds = []) {
       if (!imageUrls.includes(url)) imageUrls.push(url);
     });
 
+    logger.info("AffiliateEngine", `Total resolved media URLs: ${imageUrls.length}`);
+
     // 3. Generate structured 3-part thread using Gemini AI
+    logger.info("Gemini", "Calling Gemini 2.5 Flash to generate 3-part thread content...");
     const { productName, category, threads } =
       await geminiService.generateAffiliateThreads(briefText, imageUrls);
 
-    console.log(
-      `[Gemini] Generated 3-part affiliate threads for: "${productName}" (${category})`
+    logger.info(
+      "Gemini",
+      `Success! Generated 3-part affiliate threads for: "${productName}" [${category}]`
     );
 
     // 4. Save to Firestore
+    logger.info("Firestore", "Saving initial draft to Firestore...");
     const draftId = await draftService.createDraft({
       productName,
       category,
@@ -54,6 +67,7 @@ async function processAffiliateBrief(chatId, briefText, photoFileIds = []) {
     });
 
     // 5. Send Preview to Telegram with Topic Selector & Approve button
+    logger.info("Telegram", `Sending preview message with interactive topic buttons for draft: ${draftId}`);
     await telegramService.sendAffiliatePreview(
       chatId,
       draftId,
@@ -62,8 +76,9 @@ async function processAffiliateBrief(chatId, briefText, photoFileIds = []) {
       threads,
       imageUrls
     );
+    logger.info("AffiliateEngine", `Completed brief processing for draft: ${draftId}`);
   } catch (err) {
-    console.error("[Affiliate Engine Error]:", err);
+    logger.error("AffiliateEngine", "Error generating affiliate thread:", err);
     const errMsg = err.response?.data
       ? JSON.stringify(err.response.data)
       : err.message;
@@ -88,11 +103,13 @@ async function handleApproval(callbackQuery) {
   if (!callbackData.startsWith("approve_")) return;
 
   const draftId = callbackData.split("_")[1];
+  logger.info("Approval", `User approved draft ${draftId}. Initiating publishing sequence...`);
 
   try {
     const draft = await draftService.getDraft(draftId);
 
     if (draft.status === "published") {
+      logger.warn("Approval", `Draft ${draftId} was already published previously (rootPostId: ${draft.rootPostId})`);
       await telegramService.sendMessage(
         chatId,
         `⚠️ Thread affiliate ini sudah pernah di-publish sebelumnya! Root Post ID: ${draft.rootPostId}`
@@ -101,6 +118,7 @@ async function handleApproval(callbackQuery) {
     }
 
     if (draft.status === "publishing") {
+      logger.warn("Approval", `Draft ${draftId} is currently being published`);
       await telegramService.sendMessage(
         chatId,
         `⏳ Thread sedang dalam proses upload ke Threads, mohon tunggu...`
@@ -122,6 +140,11 @@ async function handleApproval(callbackQuery) {
       ? ` ke *${draft.topicLabel}*`
       : "";
 
+    logger.info(
+      "Approval",
+      `Publishing draft ${draftId} to Meta Threads (${imageInfo}, Topic: ${draft.topicLabel || "None"})...`
+    );
+
     await telegramService.sendMessage(
       chatId,
       `🚀 Memulai upload 3-part affiliate thread ke Meta Threads${topicNotice} (${imageInfo})...`,
@@ -139,6 +162,8 @@ async function handleApproval(callbackQuery) {
       ? `\n🌐 *Community:* ${draft.topicLabel} (\`#${draft.topicTag}\`)`
       : "";
 
+    logger.info("Approval", `Draft ${draftId} successfully uploaded! Root Post ID: ${rootPostId}`);
+
     // Notify Telegram with success summary
     await telegramService.sendMessage(
       chatId,
@@ -149,7 +174,7 @@ async function handleApproval(callbackQuery) {
     const errorDetails = error.response
       ? JSON.stringify(error.response.data)
       : error.message;
-    console.error("[Threads Affiliate Upload Error]:", errorDetails);
+    logger.error("Approval", `Threads upload failed for draft ${draftId}:`, errorDetails);
 
     await draftService.markFailed(draftId, errorDetails);
 
@@ -166,6 +191,7 @@ async function handleTopicMenu(callbackQuery) {
   const messageId = callbackQuery.message.message_id;
   const draftId = callbackQuery.data.replace("topmenu_", "");
 
+  logger.info("TopicMenu", `Opening topic selection sub-menu for draft ${draftId} (messageId: ${messageId})`);
   await telegramService.answerCallbackQuery(callbackQuery.id);
   const topicsMarkup = telegramService.buildTopicsKeyboard(draftId);
   await telegramService.editMessageReplyMarkup(chatId, messageId, topicsMarkup);
@@ -185,9 +211,15 @@ async function handleSetTopic(callbackQuery) {
 
   const topic = getTopicById(topicId);
   if (!topic) {
+    logger.warn("TopicMenu", `Topic ID "${topicId}" not found in predefined topics`);
     await telegramService.answerCallbackQuery(callbackQuery.id, "Topik tidak ditemukan");
     return;
   }
+
+  logger.info(
+    "TopicMenu",
+    `User selected topic "${topic.label}" (slug: ${topic.tag}) for draft ${draftId}`
+  );
 
   await telegramService.answerCallbackQuery(
     callbackQuery.id,
@@ -210,6 +242,7 @@ async function handleSetTopic(callbackQuery) {
   const mainMarkup = telegramService.buildMainKeyboard(draftId, draft.topicLabel);
 
   await telegramService.editMessageText(chatId, messageId, updatedText, mainMarkup);
+  logger.info("TopicMenu", `Draft ${draftId} preview updated with topic "${topic.label}"`);
 }
 
 /**
@@ -221,6 +254,7 @@ async function handleClearTopic(callbackQuery) {
   const messageId = callbackQuery.message.message_id;
   const draftId = callbackQuery.data.replace("clrtop_", "");
 
+  logger.info("TopicMenu", `User selected "Tanpa Topic" for draft ${draftId}`);
   await telegramService.answerCallbackQuery(callbackQuery.id, "🌐 Tanpa Topic (Default)");
 
   // Clear in Firestore
@@ -239,6 +273,7 @@ async function handleClearTopic(callbackQuery) {
   const mainMarkup = telegramService.buildMainKeyboard(draftId, null);
 
   await telegramService.editMessageText(chatId, messageId, updatedText, mainMarkup);
+  logger.info("TopicMenu", `Draft ${draftId} preview updated to "Tanpa Topic"`);
 }
 
 /**
@@ -250,6 +285,7 @@ async function handleBackToPreview(callbackQuery) {
   const messageId = callbackQuery.message.message_id;
   const draftId = callbackQuery.data.replace("backprev_", "");
 
+  logger.info("TopicMenu", `User clicked Back to Preview for draft ${draftId}`);
   await telegramService.answerCallbackQuery(callbackQuery.id);
   const draft = await draftService.getDraft(draftId);
   const mainMarkup = telegramService.buildMainKeyboard(draftId, draft.topicLabel);
@@ -263,6 +299,8 @@ async function handleBackToPreview(callbackQuery) {
  */
 async function handleCallbackQuery(callbackQuery) {
   const data = callbackQuery.data || "";
+  const fromUser = callbackQuery.from?.username || callbackQuery.from?.first_name || "Unknown";
+  logger.info("TelegramCallback", `Routing callback query "${data}" from user: ${fromUser}`);
 
   if (data.startsWith("approve_")) {
     await handleApproval(callbackQuery);
@@ -274,6 +312,8 @@ async function handleCallbackQuery(callbackQuery) {
     await handleClearTopic(callbackQuery);
   } else if (data.startsWith("backprev_")) {
     await handleBackToPreview(callbackQuery);
+  } else {
+    logger.warn("TelegramCallback", `Unhandled callback query data: "${data}"`);
   }
 }
 
@@ -286,6 +326,7 @@ async function handleWebhook(req, res) {
   // Always return HTTP 200 immediately to Telegram
   res.sendStatus(200);
 
+  const updateId = req.body?.update_id;
   const message = req.body?.message;
   const callbackQuery = req.body?.callback_query;
 
@@ -294,12 +335,25 @@ async function handleWebhook(req, res) {
   // ==========================================
   if (message) {
     const chatId = message.chat.id;
+    const fromUser = message.from?.username
+      ? `@${message.from.username}`
+      : message.from?.first_name || "Unknown";
+
+    logger.info(
+      "TelegramMessage",
+      `[Update #${updateId}] Incoming message from ${fromUser} (chatId: ${chatId})`
+    );
 
     // Case 1: Message contains photo(s)
     if (message.photo && Array.isArray(message.photo)) {
       const highestPhoto = message.photo[message.photo.length - 1];
       const fileId = highestPhoto.file_id;
       const caption = message.caption || "";
+
+      logger.info(
+        "TelegramMessage",
+        `Message contains photo (media_group_id: ${message.media_group_id || "none"}, caption: "${caption}")`
+      );
 
       // Check if message is part of an album (media_group_id)
       if (message.media_group_id) {
@@ -309,6 +363,10 @@ async function handleWebhook(req, res) {
           fileId,
           caption,
           async (targetChatId, targetCaption, photoList) => {
+            logger.info(
+              "MediaGroupBuffer",
+              `Media group ${message.media_group_id} buffer ready with ${photoList.length} photos`
+            );
             await processAffiliateBrief(targetChatId, targetCaption, photoList);
           }
         );
@@ -326,10 +384,16 @@ async function handleWebhook(req, res) {
 
     // Case 2: Text-only message
     if (message.text) {
-      console.log(`[Telegram] Received text brief: "${message.text}"`);
+      logger.info("TelegramMessage", `Received text brief: "${message.text}"`);
       await processAffiliateBrief(chatId, message.text, []);
       return;
     }
+
+    logger.info(
+      "TelegramMessage",
+      `Received non-text, non-photo message type: ${Object.keys(message).join(", ")}`
+    );
+    return;
   }
 
   // ==========================================
@@ -337,7 +401,12 @@ async function handleWebhook(req, res) {
   // ==========================================
   if (callbackQuery) {
     await handleCallbackQuery(callbackQuery);
+    return;
   }
+
+  // Case 3: Other Telegram update types (edited_message, my_chat_member, etc.)
+  const otherKeys = Object.keys(req.body || {}).filter((k) => k !== "update_id");
+  logger.info("TelegramWebhook", `[Update #${updateId}] Received unhandled update type: ${otherKeys.join(", ")}`);
 }
 
 module.exports = {

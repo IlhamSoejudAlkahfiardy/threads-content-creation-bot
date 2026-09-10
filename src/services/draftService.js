@@ -1,4 +1,5 @@
 const { admin, db } = require("../config/firebase");
+const logger = require("../utils/logger");
 
 const DRAFTS_COLLECTION = "drafts";
 
@@ -26,7 +27,7 @@ async function createDraft({ productName, category, imageUrls, threads }) {
   };
 
   const draftRef = await db.collection(DRAFTS_COLLECTION).add(draftData);
-  console.log(`[Firestore] Saved affiliate draft ID: ${draftRef.id}`);
+  logger.info("Firestore", `Saved affiliate draft ID: ${draftRef.id} (${productName})`);
   return draftRef.id;
 }
 
@@ -40,6 +41,7 @@ async function getDraft(draftId) {
   const doc = await docRef.get();
 
   if (!doc.exists) {
+    logger.error("Firestore", `Draft document '${draftId}' not found in Firestore`);
     throw new Error(`Draft document '${draftId}' not found in Firestore`);
   }
 
@@ -55,6 +57,7 @@ async function markPublishing(draftId) {
     status: "publishing",
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  logger.info("Firestore", `Draft ${draftId} status updated to 'publishing'`);
 }
 
 /**
@@ -71,6 +74,7 @@ async function markPublished(draftId, rootPostId, updatedThreads) {
     publishedAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  logger.info("Firestore", `Draft ${draftId} status updated to 'published' (rootPostId: ${rootPostId})`);
 }
 
 /**
@@ -85,8 +89,9 @@ async function markFailed(draftId, errorMessage) {
       errorMessage,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+    logger.error("Firestore", `Draft ${draftId} status updated to 'failed': ${errorMessage}`);
   } catch (e) {
-    console.error("[Firestore] Failed to update draft failure status:", e.message);
+    logger.error("Firestore", "Failed to update draft failure status:", e.message);
   }
 }
 
@@ -102,6 +107,7 @@ async function updateDraftTopic(draftId, topicTag, topicLabel) {
     topicLabel: topicLabel || null,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  logger.info("Firestore", `Draft ${draftId} topic updated to: ${topicLabel || "None"} (${topicTag || "None"})`);
 }
 
 module.exports = {

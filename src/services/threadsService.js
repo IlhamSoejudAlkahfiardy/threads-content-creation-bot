@@ -1,6 +1,7 @@
 const axios = require("axios");
 const env = require("../config/env");
 const sleep = require("../utils/sleep");
+const logger = require("../utils/logger");
 
 const THREADS_API_BASE = "https://graph.threads.net/v1.0";
 
@@ -23,6 +24,7 @@ async function waitForContainerFinished(creationId, maxAttempts = 8, delayMs = 1
 
       const status = res.data?.status;
       if (status === "FINISHED") {
+        logger.info("Threads", `Container ${creationId} ready (status: FINISHED)`);
         return true;
       }
       if (status === "ERROR") {
@@ -30,19 +32,21 @@ async function waitForContainerFinished(creationId, maxAttempts = 8, delayMs = 1
           `Container error from Threads: ${res.data?.error_message || "Unknown error"}`
         );
       }
-      console.log(
-        `[Threads] Container ${creationId} status: ${status}. Waiting... (attempt ${attempt}/${maxAttempts})`
+      logger.info(
+        "Threads",
+        `Container ${creationId} status: ${status}. Waiting... (attempt ${attempt}/${maxAttempts})`
       );
     } catch (err) {
       const subcode = err.response?.data?.error?.error_subcode;
       if (subcode === 4279009) {
-        console.log(
-          `[Threads] Container ${creationId} propagating... (attempt ${attempt}/${maxAttempts})`
+        logger.info(
+          "Threads",
+          `Container ${creationId} propagating... (attempt ${attempt}/${maxAttempts})`
         );
       } else if (err.message?.includes("Container error")) {
         throw err;
       } else {
-        console.warn(`[Threads] Polling notice: ${err.message}`);
+        logger.warn("Threads", `Polling notice for ${creationId}: ${err.message}`);
       }
     }
     await sleep(delayMs);
@@ -76,8 +80,9 @@ async function publishContainerWithRetry(creationId, maxRetries = 5, delayMs = 2
       const isResourceNotFound = subcode === 4279009 || err.response?.status === 404;
 
       if (isResourceNotFound && attempt < maxRetries) {
-        console.warn(
-          `[Threads] Publish attempt ${attempt}/${maxRetries} got 4279009 (resource propagating). Retrying in ${delayMs / 1000}s...`
+        logger.warn(
+          "Threads",
+          `Publish attempt ${attempt}/${maxRetries} got 4279009 (resource propagating). Retrying in ${delayMs / 1000}s...`
         );
         await sleep(delayMs);
         continue;
@@ -99,7 +104,7 @@ async function publishAffiliateThread(draft) {
   // ----------------------------------------------------
   // 1. UPLOAD THREAD #1 (HOOK - TEXT ROOT POST)
   // ----------------------------------------------------
-  console.log("[Threads] Uploading Part 1 (Hook)...");
+  logger.info("Threads", "Uploading Part 1 (Hook / Root Post)...");
   const part1 = draft.threads[0];
   const part1Params = {
     media_type: "TEXT",
@@ -108,8 +113,9 @@ async function publishAffiliateThread(draft) {
   };
   if (draft.topicTag) {
     part1Params.topic_tag = draft.topicTag;
-    console.log(
-      `[Threads] Attaching topic_tag: "${draft.topicTag}" (${draft.topicLabel || "Custom"})`
+    logger.info(
+      "Threads",
+      `Attaching topic_tag: "${draft.topicTag}" (${draft.topicLabel || "Custom"}) to Root Post`
     );
   }
 
@@ -119,9 +125,11 @@ async function publishAffiliateThread(draft) {
     { params: part1Params }
   );
   const creationId1 = container1Res.data.id;
+  logger.info("Threads", `Part 1 container created: ${creationId1}. Waiting for container readiness...`);
   await waitForContainerFinished(creationId1, 8, 1500);
+
   const rootPostId = await publishContainerWithRetry(creationId1, 5, 2000);
-  console.log(`[Threads] Part 1 (Hook) Published! ID: ${rootPostId}`);
+  logger.info("Threads", `Part 1 (Hook) Published successfully! Root Post ID: ${rootPostId}`);
 
   updatedThreads.push({
     ...part1,
@@ -133,7 +141,7 @@ async function publishAffiliateThread(draft) {
   // ----------------------------------------------------
   // 2. UPLOAD THREAD #2 (MAIN CONTENT - TEXT REPLY TO PART 1)
   // ----------------------------------------------------
-  console.log("[Threads] Uploading Part 2 (Main Content)...");
+  logger.info("Threads", `Uploading Part 2 (Main Content) as reply to Root Post (${rootPostId})...`);
   const part2 = draft.threads[1];
   const container2Res = await axios.post(
     `${THREADS_API_BASE}/${env.THREADS_USER_ID}/threads`,
@@ -148,9 +156,11 @@ async function publishAffiliateThread(draft) {
     }
   );
   const creationId2 = container2Res.data.id;
+  logger.info("Threads", `Part 2 container created: ${creationId2}. Waiting for container readiness...`);
   await waitForContainerFinished(creationId2, 8, 1500);
+
   const part2PostId = await publishContainerWithRetry(creationId2, 5, 2000);
-  console.log(`[Threads] Part 2 (Main Content) Published! ID: ${part2PostId}`);
+  logger.info("Threads", `Part 2 (Main Content) Published successfully! ID: ${part2PostId}`);
 
   updatedThreads.push({
     ...part2,
@@ -162,21 +172,23 @@ async function publishAffiliateThread(draft) {
   // ----------------------------------------------------
   // 3. UPLOAD THREAD #3 (CTA & LINKS + CAROUSEL/IMAGE/TEXT)
   // ----------------------------------------------------
-  console.log("[Threads] Uploading Part 3 (CTA & Links)...");
+  logger.info("Threads", `Uploading Part 3 (CTA & Links) as reply to Part 2 (${part2PostId})...`);
   const part3 = draft.threads[2];
   let part3PostId = null;
 
   if (imageUrls.length > 1) {
     // A. MULTI-IMAGE CAROUSEL
-    console.log(
-      `[Threads] Creating carousel containers for ${imageUrls.length} images...`
+    logger.info(
+      "Threads",
+      `Creating carousel containers for ${imageUrls.length} images...`
     );
     const childContainerIds = [];
 
     for (let c = 0; c < Math.min(imageUrls.length, 10); c++) {
       const imgUrl = imageUrls[c];
-      console.log(
-        `[Threads] Creating carousel item ${c + 1}/${imageUrls.length}...`
+      logger.info(
+        "Threads",
+        `Creating carousel item container ${c + 1}/${imageUrls.length}...`
       );
       const itemRes = await axios.post(
         `${THREADS_API_BASE}/${env.THREADS_USER_ID}/threads`,
@@ -195,12 +207,13 @@ async function publishAffiliateThread(draft) {
     }
 
     // Poll all child items
+    logger.info("Threads", "Waiting for all carousel child containers to finish...");
     for (const childId of childContainerIds) {
       await waitForContainerFinished(childId, 8, 1500);
     }
 
     // Create Parent Carousel Container
-    console.log("[Threads] Creating parent carousel container...");
+    logger.info("Threads", "Creating parent carousel container...");
     const carouselRes = await axios.post(
       `${THREADS_API_BASE}/${env.THREADS_USER_ID}/threads`,
       null,
@@ -215,11 +228,12 @@ async function publishAffiliateThread(draft) {
       }
     );
     const carouselContainerId = carouselRes.data.id;
+    logger.info("Threads", `Parent carousel container created: ${carouselContainerId}. Waiting...`);
     await waitForContainerFinished(carouselContainerId, 8, 1500);
     part3PostId = await publishContainerWithRetry(carouselContainerId, 5, 2000);
   } else if (imageUrls.length === 1) {
     // B. SINGLE IMAGE
-    console.log("[Threads] Creating single image container...");
+    logger.info("Threads", "Creating single image container for Part 3...");
     const singleRes = await axios.post(
       `${THREADS_API_BASE}/${env.THREADS_USER_ID}/threads`,
       null,
@@ -234,11 +248,12 @@ async function publishAffiliateThread(draft) {
       }
     );
     const singleContainerId = singleRes.data.id;
+    logger.info("Threads", `Single image container created: ${singleContainerId}. Waiting...`);
     await waitForContainerFinished(singleContainerId, 8, 1500);
     part3PostId = await publishContainerWithRetry(singleContainerId, 5, 2000);
   } else {
     // C. TEXT ONLY
-    console.log("[Threads] Creating text-only container for Part 3...");
+    logger.info("Threads", "Creating text-only container for Part 3...");
     const textRes = await axios.post(
       `${THREADS_API_BASE}/${env.THREADS_USER_ID}/threads`,
       null,
@@ -252,16 +267,22 @@ async function publishAffiliateThread(draft) {
       }
     );
     const textContainerId = textRes.data.id;
+    logger.info("Threads", `Text-only container created: ${textContainerId}. Waiting...`);
     await waitForContainerFinished(textContainerId, 8, 1500);
     part3PostId = await publishContainerWithRetry(textContainerId, 5, 2000);
   }
 
-  console.log(`[Threads] Part 3 Published! ID: ${part3PostId}`);
+  logger.info("Threads", `Part 3 Published successfully! ID: ${part3PostId}`);
 
   updatedThreads.push({
     ...part3,
     threadsPostId: part3PostId,
   });
+
+  logger.info(
+    "Threads",
+    `All 3 parts uploaded successfully in chain! (Root: ${rootPostId}, Part 2: ${part2PostId}, Part 3: ${part3PostId})`
+  );
 
   return {
     rootPostId,

@@ -1,6 +1,7 @@
 const axios = require("axios");
 const env = require("../config/env");
 const { TOPICS } = require("../config/topics");
+const logger = require("../utils/logger");
 
 /**
  * Send a basic message to Telegram chat
@@ -9,6 +10,7 @@ const { TOPICS } = require("../config/topics");
  * @param {object} [extra]
  */
 async function sendMessage(chatId, text, extra = {}) {
+  logger.info("TelegramOut", `Sending message to chatId: ${chatId} (${text.length} chars)`);
   return axios.post(`${env.TELEGRAM_API}/sendMessage`, {
     chat_id: chatId,
     text,
@@ -25,9 +27,10 @@ async function answerCallbackQuery(callbackQueryId, text = "") {
   try {
     const payload = { callback_query_id: callbackQueryId };
     if (text) payload.text = text;
+    logger.info("TelegramOut", `Answering callback query ${callbackQueryId} ${text ? `("${text}")` : ""}`);
     await axios.post(`${env.TELEGRAM_API}/answerCallbackQuery`, payload);
   } catch (e) {
-    // Ignore callback query errors (e.g., query expired)
+    logger.warn("TelegramOut", `Failed to answer callback query ${callbackQueryId}: ${e.message}`);
   }
 }
 
@@ -37,6 +40,7 @@ async function answerCallbackQuery(callbackQueryId, text = "") {
  * @returns {Promise<string>}
  */
 async function getTelegramFileUrl(fileId) {
+  logger.info("TelegramOut", `Fetching file path for fileId: ${fileId.slice(0, 15)}...`);
   const res = await axios.get(`${env.TELEGRAM_API}/getFile`, {
     params: { file_id: fileId },
   });
@@ -164,6 +168,7 @@ function buildTopicsKeyboard(draftId) {
  * @param {object} [replyMarkup=null]
  */
 async function editMessageText(chatId, messageId, text, replyMarkup = null) {
+  logger.info("TelegramOut", `Editing message text (chatId: ${chatId}, messageId: ${messageId})`);
   const payload = {
     chat_id: chatId,
     message_id: messageId,
@@ -175,6 +180,7 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
   try {
     await axios.post(`${env.TELEGRAM_API}/editMessageText`, payload);
   } catch (err) {
+    logger.warn("TelegramOut", `editMessageText Markdown failed. Retrying without parse_mode: ${err.message}`);
     delete payload.parse_mode;
     await axios.post(`${env.TELEGRAM_API}/editMessageText`, payload);
   }
@@ -187,6 +193,7 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
  * @param {object} replyMarkup
  */
 async function editMessageReplyMarkup(chatId, messageId, replyMarkup) {
+  logger.info("TelegramOut", `Updating inline keyboard markup (chatId: ${chatId}, messageId: ${messageId})`);
   return axios.post(`${env.TELEGRAM_API}/editMessageReplyMarkup`, {
     chat_id: chatId,
     message_id: messageId,
@@ -232,9 +239,12 @@ async function sendAffiliatePreview(
     reply_markup: replyMarkup,
   };
 
+  logger.info("TelegramOut", `Sending draft preview to chatId: ${chatId} for draftId: ${draftId}`);
+
   try {
     await axios.post(`${env.TELEGRAM_API}/sendMessage`, payload);
   } catch (err) {
+    logger.warn("TelegramOut", `sendAffiliatePreview Markdown failed. Retrying without parse_mode: ${err.message}`);
     delete payload.parse_mode;
     await axios.post(`${env.TELEGRAM_API}/sendMessage`, payload);
   }

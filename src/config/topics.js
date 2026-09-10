@@ -14,7 +14,6 @@ const TOPICS = [
   { id: "beauty", label: "💄 Beauty Threads", tag: "beautythreads" },
   { id: "books", label: "📚 Book Threads", tag: "bookthreads" },
   { id: "cats", label: "🐱 Cats of Threads", tag: "catsofthreads" },
-  { id: "beauty", label: "Beauty Threads", tag: "beautythreads" },
 ];
 
 /**

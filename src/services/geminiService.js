@@ -4,6 +4,7 @@ const {
   buildPrompt,
   responseSchema,
 } = require("../prompts/affiliatePrompt");
+const logger = require("../utils/logger");
 
 /**
  * Generate 3-part affiliate threads using Gemini 2.5 Flash
@@ -13,6 +14,8 @@ const {
  */
 async function generateAffiliateThreads(briefText, imageUrls = []) {
   const prompt = buildPrompt(briefText, imageUrls.length);
+  logger.info("Gemini", `Prompt prepared. Requesting generation from gemini-2.5-flash...`);
+  const startTime = Date.now();
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash",
@@ -23,6 +26,9 @@ async function generateAffiliateThreads(briefText, imageUrls = []) {
       responseSchema: responseSchema,
     },
   });
+
+  const durationMs = Date.now() - startTime;
+  logger.info("Gemini", `Gemini response received in ${durationMs}ms`);
 
   const parsed = JSON.parse(response.text);
   const productName = parsed.productName || "Produk Pilihan";
@@ -45,8 +51,14 @@ async function generateAffiliateThreads(briefText, imageUrls = []) {
   }));
 
   if (structuredThreads.length === 0) {
+    logger.error("Gemini", "AI response parsed to 0 structured threads");
     throw new Error("AI tidak menghasilkan thread valid.");
   }
+
+  logger.info(
+    "Gemini",
+    `Structured ${structuredThreads.length} parts for "${productName}" (${category})`
+  );
 
   return {
     productName,
