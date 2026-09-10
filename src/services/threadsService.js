@@ -101,16 +101,22 @@ async function publishAffiliateThread(draft) {
   // ----------------------------------------------------
   console.log("[Threads] Uploading Part 1 (Hook)...");
   const part1 = draft.threads[0];
+  const part1Params = {
+    media_type: "TEXT",
+    text: part1.text,
+    access_token: env.THREADS_TOKEN,
+  };
+  if (draft.topicTag) {
+    part1Params.topic_tag = draft.topicTag;
+    console.log(
+      `[Threads] Attaching topic_tag: "${draft.topicTag}" (${draft.topicLabel || "Custom"})`
+    );
+  }
+
   const container1Res = await axios.post(
     `${THREADS_API_BASE}/${env.THREADS_USER_ID}/threads`,
     null,
-    {
-      params: {
-        media_type: "TEXT",
-        text: part1.text,
-        access_token: env.THREADS_TOKEN,
-      },
-    }
+    { params: part1Params }
   );
   const creationId1 = container1Res.data.id;
   await waitForContainerFinished(creationId1, 8, 1500);

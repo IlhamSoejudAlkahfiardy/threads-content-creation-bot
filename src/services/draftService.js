@@ -18,6 +18,8 @@ async function createDraft({ productName, category, imageUrls, threads }) {
     imageUrls,
     threads,
     status: "pending",
+    topicTag: null,
+    topicLabel: null,
     rootPostId: "",
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -88,9 +90,24 @@ async function markFailed(draftId, errorMessage) {
   }
 }
 
+/**
+ * Update the topic tag and label for a draft
+ * @param {string} draftId
+ * @param {string|null} topicTag
+ * @param {string|null} topicLabel
+ */
+async function updateDraftTopic(draftId, topicTag, topicLabel) {
+  await db.collection(DRAFTS_COLLECTION).doc(draftId).update({
+    topicTag: topicTag || null,
+    topicLabel: topicLabel || null,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
 module.exports = {
   createDraft,
   getDraft,
+  updateDraftTopic,
   markPublishing,
   markPublished,
   markFailed,

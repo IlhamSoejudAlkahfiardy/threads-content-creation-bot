@@ -3,6 +3,7 @@ const geminiService = require("../services/geminiService");
 const draftService = require("../services/draftService");
 const threadsService = require("../services/threadsService");
 const { handleMediaGroup } = require("../utils/mediaGroupBuffer");
+const { getTopicById } = require("../config/topics");
 
 /**
  * High-level orchestration: process product brief and generate affiliate threads
@@ -52,7 +53,7 @@ async function processAffiliateBrief(chatId, briefText, photoFileIds = []) {
       threads,
     });
 
-    // 5. Send Preview to Telegram with Approve button
+    // 5. Send Preview to Telegram with Topic Selector & Approve button
     await telegramService.sendAffiliatePreview(
       chatId,
       draftId,
@@ -117,9 +118,14 @@ async function handleApproval(callbackQuery) {
         ? "dengan 1 Foto"
         : "Text Only";
 
+    const topicNotice = draft.topicLabel
+      ? ` ke *${draft.topicLabel}*`
+      : "";
+
     await telegramService.sendMessage(
       chatId,
-      `🚀 Memulai upload 3-part affiliate thread ke Meta Threads (${imageInfo})...`
+      `🚀 Memulai upload 3-part affiliate thread ke Meta Threads${topicNotice} (${imageInfo})...`,
+      { parse_mode: "Markdown" }
     );
 
     // Execute Threads 3-part upload chain
@@ -129,10 +135,14 @@ async function handleApproval(callbackQuery) {
     // Update Firestore to published
     await draftService.markPublished(draftId, rootPostId, updatedThreads);
 
+    const topicSummary = draft.topicLabel
+      ? `\n🌐 *Community:* ${draft.topicLabel} (\`#${draft.topicTag}\`)`
+      : "";
+
     // Notify Telegram with success summary
     await telegramService.sendMessage(
       chatId,
-      `🎉 *Thread Affiliate Berhasil Di-Upload ke Threads!*\n\n🛍️ *Produk:* ${draft.productName}\n🏷️ *Kategori:* ${draft.category}\n🔗 *Root Post ID:* \`${rootPostId}\`\n🖼️ *Media:* ${imageInfo}\n\nSemua 3 part berhasil di-chain berurutan! 🚀`,
+      `🎉 *Thread Affiliate Berhasil Di-Upload ke Threads!*\n\n🛍️ *Produk:* ${draft.productName}\n🏷️ *Kategori:* ${draft.category}${topicSummary}\n🔗 *Root Post ID:* \`${rootPostId}\`\n🖼️ *Media:* ${imageInfo}\n\nSemua 3 part berhasil di-chain berurutan! 🚀`,
       { parse_mode: "Markdown" }
     );
   } catch (error) {
@@ -144,6 +154,126 @@ async function handleApproval(callbackQuery) {
     await draftService.markFailed(draftId, errorDetails);
 
     await telegramService.sendMessage(chatId, `❌ Upload Failed: ${errorDetails}`);
+  }
+}
+
+/**
+ * Handle topic menu opening: display list of predefined topics (Model B)
+ * @param {object} callbackQuery
+ */
+async function handleTopicMenu(callbackQuery) {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const draftId = callbackQuery.data.replace("topmenu_", "");
+
+  await telegramService.answerCallbackQuery(callbackQuery.id);
+  const topicsMarkup = telegramService.buildTopicsKeyboard(draftId);
+  await telegramService.editMessageReplyMarkup(chatId, messageId, topicsMarkup);
+}
+
+/**
+ * Handle user selecting a topic from the sub-menu
+ * @param {object} callbackQuery
+ */
+async function handleSetTopic(callbackQuery) {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  // Format: settop_{draftId}_{topicId}
+  const parts = callbackQuery.data.split("_");
+  const draftId = parts[1];
+  const topicId = parts[2];
+
+  const topic = getTopicById(topicId);
+  if (!topic) {
+    await telegramService.answerCallbackQuery(callbackQuery.id, "Topik tidak ditemukan");
+    return;
+  }
+
+  await telegramService.answerCallbackQuery(
+    callbackQuery.id,
+    `✅ Topik dipilih: ${topic.label}`
+  );
+
+  // Update Firestore draft
+  await draftService.updateDraftTopic(draftId, topic.tag, topic.label);
+  const draft = await draftService.getDraft(draftId);
+
+  // Rebuild preview text & main keyboard
+  const updatedText = telegramService.buildPreviewText(
+    draft.productName,
+    draft.category,
+    draft.threads,
+    draft.imageUrls,
+    draft.topicLabel,
+    draft.topicTag
+  );
+  const mainMarkup = telegramService.buildMainKeyboard(draftId, draft.topicLabel);
+
+  await telegramService.editMessageText(chatId, messageId, updatedText, mainMarkup);
+}
+
+/**
+ * Handle user clearing topic (choosing "Tanpa Topic")
+ * @param {object} callbackQuery
+ */
+async function handleClearTopic(callbackQuery) {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const draftId = callbackQuery.data.replace("clrtop_", "");
+
+  await telegramService.answerCallbackQuery(callbackQuery.id, "🌐 Tanpa Topic (Default)");
+
+  // Clear in Firestore
+  await draftService.updateDraftTopic(draftId, null, null);
+  const draft = await draftService.getDraft(draftId);
+
+  // Rebuild preview text & main keyboard
+  const updatedText = telegramService.buildPreviewText(
+    draft.productName,
+    draft.category,
+    draft.threads,
+    draft.imageUrls,
+    null,
+    null
+  );
+  const mainMarkup = telegramService.buildMainKeyboard(draftId, null);
+
+  await telegramService.editMessageText(chatId, messageId, updatedText, mainMarkup);
+}
+
+/**
+ * Handle user cancelling topic selection and going back to preview
+ * @param {object} callbackQuery
+ */
+async function handleBackToPreview(callbackQuery) {
+  const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
+  const draftId = callbackQuery.data.replace("backprev_", "");
+
+  await telegramService.answerCallbackQuery(callbackQuery.id);
+  const draft = await draftService.getDraft(draftId);
+  const mainMarkup = telegramService.buildMainKeyboard(draftId, draft.topicLabel);
+
+  await telegramService.editMessageReplyMarkup(chatId, messageId, mainMarkup);
+}
+
+/**
+ * Route incoming Telegram callback queries
+ * @param {object} callbackQuery
+ */
+async function handleCallbackQuery(callbackQuery) {
+  const data = callbackQuery.data || "";
+
+  if (data.startsWith("approve_")) {
+    await handleApproval(callbackQuery);
+  } else if (data.startsWith("topmenu_")) {
+    await handleTopicMenu(callbackQuery);
+  } else if (data.startsWith("settop_")) {
+    await handleSetTopic(callbackQuery);
+  } else if (data.startsWith("clrtop_")) {
+    await handleClearTopic(callbackQuery);
+  } else if (data.startsWith("backprev_")) {
+    await handleBackToPreview(callbackQuery);
   }
 }
 
@@ -203,10 +333,10 @@ async function handleWebhook(req, res) {
   }
 
   // ==========================================
-  // --- B. HANDLE APPROVAL BUTTON CLICK ---
+  // --- B. HANDLE CALLBACK QUERY BUTTONS ---
   // ==========================================
   if (callbackQuery) {
-    await handleApproval(callbackQuery);
+    await handleCallbackQuery(callbackQuery);
   }
 }
 
@@ -214,4 +344,5 @@ module.exports = {
   handleWebhook,
   processAffiliateBrief,
   handleApproval,
+  handleCallbackQuery,
 };
