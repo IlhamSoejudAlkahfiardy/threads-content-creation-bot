@@ -1,54 +1,49 @@
 require("dotenv").config();
-const { generateAffiliateThreads } = require("./src/services/geminiService");
+const { generateTechThreads } = require("./src/services/geminiService");
 
-// Default sample brief if none provided via command line arguments
-const defaultBrief = `
-produk: Smartberry Universal  STYLUS PEN 3 IN 1 - Pulpen + Stylus Layar Sentuh + Ujung Presisi untuk Semua Tablet & Smartphone
-
-harga: 17 ribuan
-
-Link:
-https://vt.tokopedia.com/t/ZS9S2UuyCb78Y-uTP4F/
-`;
-// const defaultBrief = `
-// Smartberry Universal STYLUS PEN 3 IN 1
-// - Pulpen biasa untuk nulis di kertas / catatan manual
-// - Stylus layar sentuh kapasitif universal (kompatibel iPad, tablet Android, iPhone, smartphone)
-// - Ujung presisi transparent disc untuk gambar detail dan tanda tangan digital
-// - Material body aluminium alloy premium ringan
-// - Link pembelian: https://tokopedia.link/stylus-universal-3in1
-// `;
+const defaultTopic =
+  "Pro cons langganan AI model subscription (seperti ChatGPT Plus/Claude Pro) vs bayar API provider per token";
 
 const userArg = process.argv.slice(2).join(" ");
-const briefToTest = userArg.trim() || defaultBrief.trim();
+const topicToTest = userArg.trim() || defaultTopic;
+const modeToTest = process.env.TEST_MODE || "deepdive";
 
 async function runTest() {
   console.log("=======================================================");
-  console.log("🧪 TESTING GENERASI PROMPT ORGANIK THREADS");
+  console.log("🧪 TESTING GENERASI THREADS TECH CONTENT (PERSONAL BRANDING)");
   console.log("=======================================================\n");
-  console.log("📥 INPUT BRIEF:");
-  console.log(briefToTest);
+  console.log(`📥 TOPIK : "${topicToTest}"`);
+  console.log(`🎭 MODE  : ${modeToTest}`);
   console.log("\n⏳ Sedang memproses dengan Gemini AI (gemini-2.5-flash)...\n");
 
   const startTime = Date.now();
 
   try {
-    const result = await generateAffiliateThreads(briefToTest, []);
+    const result = await generateTechThreads({
+      topicText: topicToTest,
+      mode: modeToTest,
+      articleContent: null,
+      hasImage: false,
+    });
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log("==================== HASIL GENERASI ====================");
-    console.log(`🛍️  Produk   : ${result.productName}`);
-    console.log(`🏷️  Kategori : ${result.category}`);
-    console.log(`⏱️  Durasi   : ${duration} detik`);
+    console.log(`💡 Judul Topik : ${result.topicTitle}`);
+    console.log(`🎭 Mode        : ${result.mode}`);
+    console.log(`📊 Total Part  : ${result.threads.length} parts`);
+    console.log(`⏱️ Durasi      : ${duration} detik`);
     console.log("========================================================\n");
 
+    let allUnder500 = true;
     result.threads.forEach((t) => {
       const typeBadge =
         t.type === "HOOK"
-          ? "🎣 PART 1 - HOOK"
-          : t.type === "MAIN_CONTENT"
-          ? "📖 PART 2 - MAIN CONTENT"
-          : "🔗 PART 3 - CLOSING & LINK";
+          ? "🎣 PART " + t.part + " - HOOK"
+          : t.type === "CTA"
+          ? "📢 PART " + t.part + " - CTA DISKUSI"
+          : "📖 PART " + t.part + " - BODY";
+
+      if (t.charCount > 500) allUnder500 = false;
 
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
       console.log(`${typeBadge} [${t.charCount}/500 karakter]`);
@@ -58,7 +53,11 @@ async function runTest() {
     });
 
     console.log("=======================================================");
-    console.log("✅ Generasi selesai dan struktur valid!");
+    if (allUnder500) {
+      console.log("✅ Generasi selesai! Semua part STRICTLY di bawah 500 karakter.");
+    } else {
+      console.log("⚠️ Ada part yang melebihi 500 karakter!");
+    }
     console.log("=======================================================");
   } catch (error) {
     console.error("\n❌ Error saat generasi:", error.message);

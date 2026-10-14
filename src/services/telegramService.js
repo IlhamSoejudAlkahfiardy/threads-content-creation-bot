@@ -27,7 +27,10 @@ async function answerCallbackQuery(callbackQueryId, text = "") {
   try {
     const payload = { callback_query_id: callbackQueryId };
     if (text) payload.text = text;
-    logger.info("TelegramOut", `Answering callback query ${callbackQueryId} ${text ? `("${text}")` : ""}`);
+    logger.info(
+      "TelegramOut",
+      `Answering callback query ${callbackQueryId} ${text ? `("${text}")` : ""}`
+    );
     await axios.post(`${env.TELEGRAM_API}/answerCallbackQuery`, payload);
   } catch (e) {
     logger.warn("TelegramOut", `Failed to answer callback query ${callbackQueryId}: ${e.message}`);
@@ -50,46 +53,118 @@ async function getTelegramFileUrl(fileId) {
 }
 
 /**
- * Construct Markdown formatted text for 3-part affiliate thread preview
- * @param {string} productName
- * @param {string} category
+ * Map mode string to human readable label
+ * @param {string} mode
+ * @returns {string}
+ */
+function getModeLabel(mode) {
+  switch (mode) {
+    case "hottake":
+      return "🔥 Hot Take / Opini";
+    case "deepdive":
+      return "🧠 Deep Dive / Edukasi";
+    case "tips":
+      return "🛠️ Tips & Tricks";
+    case "joke":
+      return "😂 Jokes / Relatable IT";
+    default:
+      return "💡 Tech Content";
+  }
+}
+
+/**
+ * Send mode selection keyboard for a pending input session
+ * @param {number|string} chatId
+ * @param {string} sessionId
+ * @param {string} snippetText
+ */
+async function sendModeSelection(chatId, sessionId, snippetText) {
+  const shortSnippet =
+    snippetText.length > 120 ? `${snippetText.slice(0, 120)}...` : snippetText;
+
+  const text = `💡 *Ide / Link diterima!*\n"${shortSnippet}"\n\nPilih gaya konten yang ingin kamu buat:`;
+
+  const replyMarkup = {
+    inline_keyboard: [
+      [
+        { text: "🔥 Hot Take", callback_data: `mode_hottake_${sessionId}` },
+        { text: "🧠 Deep Dive", callback_data: `mode_deepdive_${sessionId}` },
+      ],
+      [
+        { text: "🛠️ Tips & Tricks", callback_data: `mode_tips_${sessionId}` },
+        { text: "😂 Jokes / Meme", callback_data: `mode_joke_${sessionId}` },
+      ],
+      [{ text: "❌ Batalkan", callback_data: `cancel_${sessionId}` }],
+    ],
+  };
+
+  logger.info("TelegramOut", `Sending mode selection keyboard for session: ${sessionId}`);
+
+  const payload = {
+    chat_id: chatId,
+    text,
+    parse_mode: "Markdown",
+    reply_markup: replyMarkup,
+  };
+
+  try {
+    await axios.post(`${env.TELEGRAM_API}/sendMessage`, payload);
+  } catch (err) {
+    logger.warn("TelegramOut", `sendModeSelection Markdown failed, retrying plain: ${err.message}`);
+    delete payload.parse_mode;
+    await axios.post(`${env.TELEGRAM_API}/sendMessage`, payload);
+  }
+}
+
+/**
+ * Construct Markdown formatted text for dynamic tech thread preview
+ * @param {string} topicTitle
+ * @param {string} mode
  * @param {Array} threads
  * @param {string[]} imageUrls
  * @param {string|null} [topicLabel=null]
  * @param {string|null} [topicTag=null]
  * @returns {string}
  */
-function buildPreviewText(productName, category, threads, imageUrls, topicLabel = null, topicTag = null) {
+function buildPreviewText(
+  topicTitle,
+  mode,
+  threads,
+  imageUrls = [],
+  topicLabel = null,
+  topicTag = null
+) {
   const imageLabel =
-    imageUrls && imageUrls.length > 1
-      ? `🖼️ *Lampiran:* ${imageUrls.length} Gambar (Carousel Slider di Part 3)`
-      : imageUrls && imageUrls.length === 1
-      ? `🖼️ *Lampiran:* 1 Gambar di Part 3`
-      : `🖼️ *Lampiran:* Tanpa Gambar (Text Only)`;
+    imageUrls && imageUrls.length > 0
+      ? `🖼️ *Lampiran:* ${imageUrls.length} Foto (Dipasang pada Root Post Part 1)`
+      : `🖼️ *Lampiran:* Tanpa Foto (Text Only)`;
 
   const topicInfo =
     topicLabel && topicTag
       ? `🌐 *Community/Topic:* ${topicLabel} (\`#${topicTag}\`)`
       : `🌐 *Community/Topic:* _(Tanpa Topic / Default)_`;
 
-  let messageText = `🛍️ *DRAFT AFFILIATE THREADS: ${productName}*\n🏷️ *Kategori:* ${category}\n${topicInfo}\n${imageLabel}\n\n`;
+  let messageText = `🧵 *DRAFT UTAS: ${topicTitle}*\n🎭 *Mode:* ${getModeLabel(
+    mode
+  )}\n${topicInfo}\n${imageLabel}\n\n`;
 
+  const total = threads.length;
   threads.forEach((t) => {
     const typeLabel =
       t.type === "HOOK"
-        ? "HOOK (Pancingan)"
-        : t.type === "MAIN_CONTENT"
-        ? "MAIN CONTENT (Review & Solusi)"
-        : "CTA & AFFILIATE LINKS";
+        ? "HOOK (Pembuka)"
+        : t.type === "CTA"
+        ? "CTA DISKUSI"
+        : "BODY";
 
-    messageText += `━━━━━━━━━━━━━━━━━━━\n*[${t.part}/3] ${typeLabel}* (${t.text.length} chars)\n${t.text}\n\n`;
+    messageText += `━━━━━━━━━━━━━━━━━━━\n*[${t.part}/${total}] ${typeLabel}* (${t.text.length} chars)\n${t.text}\n\n`;
   });
 
   return messageText;
 }
 
 /**
- * Build primary preview inline keyboard with Topic Selector and Approve buttons
+ * Build primary preview inline keyboard with Topic Selector, Approve, and Reject buttons
  * @param {string} draftId
  * @param {string|null} [topicLabel=null]
  * @returns {object}
@@ -109,8 +184,14 @@ function buildMainKeyboard(draftId, topicLabel = null) {
       ],
       [
         {
-          text: "✅ Approve & Upload to Threads",
+          text: "✅ Approve & Publish ke Threads",
           callback_data: `approve_${draftId}`,
+        },
+      ],
+      [
+        {
+          text: "❌ Reject / Hapus Draft",
+          callback_data: `reject_${draftId}`,
         },
       ],
     ],
@@ -118,7 +199,7 @@ function buildMainKeyboard(draftId, topicLabel = null) {
 }
 
 /**
- * Build sub-menu inline keyboard displaying available predefined topics in 2 columns
+ * Build sub-menu inline keyboard displaying available predefined tech topics in 2 columns
  * @param {string} draftId
  * @returns {object}
  */
@@ -152,7 +233,7 @@ function buildTopicsKeyboard(draftId) {
   // Row for going back without changes
   rows.push([
     {
-      text: "⬅️ Batal / Kembali ke Preview",
+      text: "⬅️ Kembali ke Preview",
       callback_data: `backprev_${draftId}`,
     },
   ]);
@@ -180,9 +261,19 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
   try {
     await axios.post(`${env.TELEGRAM_API}/editMessageText`, payload);
   } catch (err) {
-    logger.warn("TelegramOut", `editMessageText Markdown failed. Retrying without parse_mode: ${err.message}`);
+    logger.warn(
+      "TelegramOut",
+      `editMessageText Markdown failed. Retrying without parse_mode: ${err.message}`
+    );
     delete payload.parse_mode;
-    await axios.post(`${env.TELEGRAM_API}/editMessageText`, payload);
+    try {
+      await axios.post(`${env.TELEGRAM_API}/editMessageText`, payload);
+    } catch (retryErr) {
+      logger.warn(
+        "TelegramOut",
+        `editMessageText plain fallback also failed: ${retryErr.response?.data?.description || retryErr.message}`
+      );
+    }
   }
 }
 
@@ -193,7 +284,10 @@ async function editMessageText(chatId, messageId, text, replyMarkup = null) {
  * @param {object} replyMarkup
  */
 async function editMessageReplyMarkup(chatId, messageId, replyMarkup) {
-  logger.info("TelegramOut", `Updating inline keyboard markup (chatId: ${chatId}, messageId: ${messageId})`);
+  logger.info(
+    "TelegramOut",
+    `Updating inline keyboard markup (chatId: ${chatId}, messageId: ${messageId})`
+  );
   return axios.post(`${env.TELEGRAM_API}/editMessageReplyMarkup`, {
     chat_id: chatId,
     message_id: messageId,
@@ -202,29 +296,29 @@ async function editMessageReplyMarkup(chatId, messageId, replyMarkup) {
 }
 
 /**
- * Send preview of the 3-part affiliate thread to Telegram with Topic Selector & Approve button
+ * Send preview of the dynamic tech thread to Telegram with Topic Selector & Approve button
  * @param {number|string} chatId
  * @param {string} draftId
- * @param {string} productName
- * @param {string} category
+ * @param {string} topicTitle
+ * @param {string} mode
  * @param {Array} threads
  * @param {string[]} imageUrls
  * @param {string|null} [topicLabel=null]
  * @param {string|null} [topicTag=null]
  */
-async function sendAffiliatePreview(
+async function sendTechDraftPreview(
   chatId,
   draftId,
-  productName,
-  category,
+  topicTitle,
+  mode,
   threads,
   imageUrls,
   topicLabel = null,
   topicTag = null
 ) {
   const messageText = buildPreviewText(
-    productName,
-    category,
+    topicTitle,
+    mode,
     threads,
     imageUrls,
     topicLabel,
@@ -239,12 +333,18 @@ async function sendAffiliatePreview(
     reply_markup: replyMarkup,
   };
 
-  logger.info("TelegramOut", `Sending draft preview to chatId: ${chatId} for draftId: ${draftId}`);
+  logger.info(
+    "TelegramOut",
+    `Sending tech draft preview to chatId: ${chatId} for draftId: ${draftId}`
+  );
 
   try {
     await axios.post(`${env.TELEGRAM_API}/sendMessage`, payload);
   } catch (err) {
-    logger.warn("TelegramOut", `sendAffiliatePreview Markdown failed. Retrying without parse_mode: ${err.message}`);
+    logger.warn(
+      "TelegramOut",
+      `sendTechDraftPreview Markdown failed. Retrying without parse_mode: ${err.message}`
+    );
     delete payload.parse_mode;
     await axios.post(`${env.TELEGRAM_API}/sendMessage`, payload);
   }
@@ -254,10 +354,12 @@ module.exports = {
   sendMessage,
   answerCallbackQuery,
   getTelegramFileUrl,
-  sendAffiliatePreview,
+  sendModeSelection,
+  sendTechDraftPreview,
   buildPreviewText,
   buildMainKeyboard,
   buildTopicsKeyboard,
   editMessageText,
   editMessageReplyMarkup,
+  getModeLabel,
 };

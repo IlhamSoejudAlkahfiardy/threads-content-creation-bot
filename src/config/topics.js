@@ -8,12 +8,10 @@
 const TOPICS = [
   { id: "tech", label: "💻 Tech Threads", tag: "techthreads" },
   { id: "ai", label: "🤖 AI Threads", tag: "aithreads" },
-  { id: "shopee", label: "🛍️ Racun Shopee", tag: "racunshopee" },
-  { id: "fashion", label: "👗 Fashion Threads", tag: "fashionthreads" },
-  { id: "gaming", label: "🎮 Gaming Threads", tag: "gamingthreads" },
-  { id: "beauty", label: "💄 Beauty Threads", tag: "beautythreads" },
-  { id: "books", label: "📚 Book Threads", tag: "bookthreads" },
-  { id: "cats", label: "🐱 Cats of Threads", tag: "catsofthreads" },
+  { id: "dev", label: "👨‍💻 Developer Life", tag: "developerthreads" },
+  { id: "webdev", label: "🌐 Web Dev", tag: "webdev" },
+  { id: "devops", label: "☁️ DevOps & Cloud", tag: "devops" },
+  { id: "career", label: "🚀 Tech Career", tag: "techcareer" },
 ];
 
 /**
