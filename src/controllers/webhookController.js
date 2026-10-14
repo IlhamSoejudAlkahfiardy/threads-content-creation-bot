@@ -144,7 +144,7 @@ async function handleApproval(callbackQuery) {
   await telegramService.answerCallbackQuery(callbackQuery.id);
   if (!callbackData.startsWith("approve_")) return;
 
-  const draftId = callbackData.split("_")[1];
+  const draftId = callbackData.replace("approve_", "");
   logger.info("Approval", `User approved draft ${draftId}. Initiating publishing sequence...`);
 
   try {
@@ -313,10 +313,10 @@ async function handleTopicMenu(callbackQuery) {
  */
 async function handleSetTopic(callbackQuery) {
   const chatId = callbackQuery.message.chat.id;
-  const messageId = callbackQuery.message.message_id;
-  const parts = callbackQuery.data.split("_");
-  const draftId = parts[1];
-  const topicId = parts[2];
+  const withoutPrefix = callbackQuery.data.replace("settop_", "");
+  const lastUnderscore = withoutPrefix.lastIndexOf("_");
+  const draftId = withoutPrefix.substring(0, lastUnderscore);
+  const topicId = withoutPrefix.substring(lastUnderscore + 1);
 
   const topic = getTopicById(topicId);
   if (!topic) {
