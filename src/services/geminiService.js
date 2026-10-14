@@ -7,7 +7,16 @@ const {
 const logger = require("../utils/logger");
 
 /**
- * Generate tech/IT threads using Gemini 2.5 Flash
+ * Priority list of models with automatic fallback on 503 / high-demand / quota limits
+ */
+const CANDIDATE_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+];
+
+/**
+ * Generate tech/IT threads using Gemini with multi-model fallback resilience
  * @param {object} params
  * @param {string} params.topicText - User prompt or news topic
  * @param {string} [params.mode="deepdive"] - 'hottake' | 'deepdive' | 'tips' | 'joke'
@@ -22,26 +31,53 @@ async function generateTechThreads({
   hasImage = false,
 }) {
   const prompt = buildTechPrompt({ topicText, mode, articleContent, hasImage });
-  logger.info(
-    "Gemini",
-    `Prompt prepared for mode "${mode}". Requesting generation from gemini-2.5-flash...`
-  );
-  const startTime = Date.now();
+  let responseText = null;
+  let usedModel = null;
+  let lastError = null;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: prompt,
-    config: {
-      systemInstruction: systemInstruction,
-      responseMimeType: "application/json",
-      responseSchema: responseSchema,
-    },
-  });
+  // Try candidate models in order of priority
+  for (const modelName of CANDIDATE_MODELS) {
+    try {
+      logger.info(
+        "Gemini",
+        `Requesting generation from ${modelName} for mode "${mode}"...`
+      );
+      const startTime = Date.now();
 
-  const durationMs = Date.now() - startTime;
-  logger.info("Gemini", `Gemini response received in ${durationMs}ms`);
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: {
+          systemInstruction: systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: responseSchema,
+        },
+      });
 
-  const parsed = JSON.parse(response.text);
+      const durationMs = Date.now() - startTime;
+      logger.info("Gemini", `Success! Received response from ${modelName} in ${durationMs}ms`);
+      responseText = response.text;
+      usedModel = modelName;
+      break;
+    } catch (err) {
+      lastError = err;
+      const errorMsg = err.response?.data?.error?.message || err.message;
+      logger.warn(
+        "Gemini",
+        `Model ${modelName} unavailable/failed: "${errorMsg}". Falling back to next model...`
+      );
+    }
+  }
+
+  if (!responseText) {
+    logger.error("Gemini", "All candidate Gemini models failed:", lastError?.message);
+    throw (
+      lastError ||
+      new Error("Semua model Gemini sedang mengalami lonjakan trafik. Silakan coba lagi sebentar.")
+    );
+  }
+
+  const parsed = JSON.parse(responseText);
   const topicTitle = parsed.topicTitle || "Topik Tech";
   const selectedMode = parsed.mode || mode;
   const rawThreads = Array.isArray(parsed.threads) ? parsed.threads : [];
@@ -68,7 +104,7 @@ async function generateTechThreads({
 
   logger.info(
     "Gemini",
-    `Structured ${structuredThreads.length} parts for "${topicTitle}" [${selectedMode}]`
+    `Structured ${structuredThreads.length} parts for "${topicTitle}" [${selectedMode}] using ${usedModel}`
   );
 
   return {
