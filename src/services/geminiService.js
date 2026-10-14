@@ -4,19 +4,73 @@ const {
   buildTechPrompt,
   responseSchema,
 } = require("../prompts/techContentPrompt");
+const sleep = require("../utils/sleep");
 const logger = require("../utils/logger");
 
 /**
- * Priority list of models with automatic fallback on 503 / high-demand / quota limits
+ * Valid candidate models supported by @google/genai SDK in priority order
  */
 const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",
   "gemini-2.0-flash",
-  "gemini-1.5-flash",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash-lite",
 ];
 
 /**
- * Generate tech/IT threads using Gemini with multi-model fallback resilience
+ * Call Gemini with retry on transient 503 (high demand) or 429 errors
+ * @param {string} modelName
+ * @param {string} prompt
+ * @param {number} [maxAttempts=2]
+ * @returns {Promise<{ text: string, modelName: string }>}
+ */
+async function callGeminiWithRetry(modelName, prompt, maxAttempts = 2) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      logger.info(
+        "Gemini",
+        `Calling ${modelName} (attempt ${attempt}/${maxAttempts})...`
+      );
+      const startTime = Date.now();
+
+      const response = await ai.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config: {
+          systemInstruction: systemInstruction,
+          responseMimeType: "application/json",
+          responseSchema: responseSchema,
+        },
+      });
+
+      const durationMs = Date.now() - startTime;
+      logger.info(
+        "Gemini",
+        `Success! Response received from ${modelName} in ${durationMs}ms`
+      );
+      return { text: response.text, modelName };
+    } catch (err) {
+      const errorMsg = err.response?.data?.error?.message || err.message;
+      const isTransient =
+        err.status === 503 ||
+        err.status === 429 ||
+        errorMsg.includes("high demand") ||
+        errorMsg.includes("UNAVAILABLE");
+
+      if (isTransient && attempt < maxAttempts) {
+        logger.info(
+          "Gemini",
+          `Transient spike on ${modelName}. Waiting 1.5s before retry (attempt ${attempt}/${maxAttempts})...`
+        );
+        await sleep(1500);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+/**
+ * Generate tech/IT threads using Gemini with multi-model fallback & transient retry
  * @param {object} params
  * @param {string} params.topicText - User prompt or news topic
  * @param {string} [params.mode="deepdive"] - 'hottake' | 'deepdive' | 'tips' | 'joke'
@@ -38,33 +92,16 @@ async function generateTechThreads({
   // Try candidate models in order of priority
   for (const modelName of CANDIDATE_MODELS) {
     try {
-      logger.info(
-        "Gemini",
-        `Requesting generation from ${modelName} for mode "${mode}"...`
-      );
-      const startTime = Date.now();
-
-      const response = await ai.models.generateContent({
-        model: modelName,
-        contents: prompt,
-        config: {
-          systemInstruction: systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: responseSchema,
-        },
-      });
-
-      const durationMs = Date.now() - startTime;
-      logger.info("Gemini", `Success! Received response from ${modelName} in ${durationMs}ms`);
-      responseText = response.text;
-      usedModel = modelName;
+      const result = await callGeminiWithRetry(modelName, prompt, 2);
+      responseText = result.text;
+      usedModel = result.modelName;
       break;
     } catch (err) {
       lastError = err;
       const errorMsg = err.response?.data?.error?.message || err.message;
       logger.warn(
         "Gemini",
-        `Model ${modelName} unavailable/failed: "${errorMsg}". Falling back to next model...`
+        `Model ${modelName} failed (${errorMsg}). Falling back to next model...`
       );
     }
   }
